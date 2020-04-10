@@ -900,6 +900,13 @@ label1:
 //	<mnemonic> VRT,VRA,VRB,SHB
 	VSLDOI	$4, V2, V1, V0
 
+//	Vector merge odd and even word
+//	<MNEMONIC> VRA,VRB,VRT produces
+//	<mnemonic> VRT,VRA,VRB
+
+	VMRGOW	V4,V5,V6
+	VMRGEW	V4,V5,V6
+
 //	Vector count, VX-form
 //	<MNEMONIC> VRB,VRT produces
 //	<mnemonic> VRT,VRB
@@ -1004,19 +1011,33 @@ label1:
 //	<MNEMONIC> (RB)(RA*1),XT produces
 //	<mnemonic> XT,RA,RB
 	LXVD2X	    (R1)(R2*1), VS0
-	LXVDSX	    (R1)(R2*1), VS0
 	LXVW4X	    (R1)(R2*1), VS0
+	LXVH8X	    (R1)(R2*1), VS0
+	LXVB16X	    (R1)(R2*1), VS0
+	LXVDSX	    (R1)(R2*1), VS0
 	LXSDX	    (R1)(R2*1), VS0
 	LXSIWAX	    (R1)(R2*1), VS0
 	LXSIWZX	    (R1)(R2*1), VS0
+
+// VSX load, DQ-form
+// <MNEMONIC> DQ(RA), XS produces
+// <mnemonic> XS, DQ(RA)
+	LXV         32752(R1), VS0
 
 //	VSX store, XX1-form
 //	<MNEMONIC> XS,(RB)(RA*1) produces
 //	<mnemonic> XS,RA,RB
 	STXVD2X	    VS63, (R1)(R2*1)
 	STXVW4X	    VS63, (R1)(R2*1)
+	STXVH8X	    VS63, (R1)(R2*1)
+	STXVB16X	VS63, (R1)(R2*1)
 	STXSDX	    VS63, (R1)(R2*1)
 	STXSIWX	    VS63, (R1)(R2*1)
+
+// VSX store, DQ-form
+// <MNEMONIC> DQ(RA), XS produces
+// <mnemonic> XS, DQ(RA)
+	STXV        VS63, -32752(R1)
 
 //	VSX move from VSR, XX1-form
 //	<MNEMONIC> XS,RA produces
@@ -1043,7 +1064,7 @@ label1:
 //	VSX AND, XX3-form
 //	<MNEMONIC> XA,XB,XT produces
 //	<mnemonic> XT,XA,XB
-	XXLANDQ	    VS0,VS1,VS32
+	XXLAND	    VS0,VS1,VS32
 	XXLANDC	    VS0,VS1,VS32
 	XXLEQV	    VS0,VS1,VS32
 	XXLNAND	    VS0,VS1,VS32
@@ -1071,6 +1092,11 @@ label1:
 //	<MNEMONIC> XB,UIM,XT produces
 //	<mnemonic> XT,XB,UIM
 	XXSPLTW	    VS0,$3,VS32
+
+//      VSX permute, XX3-form
+//      <MNEMONIC> XA,XB,XT produces
+//      <mnemonic> XT,XA,XB
+        XXPERM    VS0,VS1,VS32
 
 //	VSX permute, XX3-form
 //	<MNEMONIC> XA,XB,DM,XT produces

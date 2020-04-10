@@ -7,7 +7,6 @@ package get
 
 import (
 	"fmt"
-	"go/build"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -108,7 +107,7 @@ var (
 )
 
 func init() {
-	work.AddBuildFlags(CmdGet)
+	work.AddBuildFlags(CmdGet, work.OmitModFlag|work.OmitModCommonFlags)
 	CmdGet.Run = runGet // break init loop
 	CmdGet.Flag.BoolVar(&Insecure, "insecure", Insecure, "")
 }
@@ -198,8 +197,8 @@ func downloadPaths(patterns []string) []string {
 	}
 	var pkgs []string
 	for _, m := range search.ImportPathsQuiet(patterns) {
-		if len(m.Pkgs) == 0 && strings.Contains(m.Pattern, "...") {
-			pkgs = append(pkgs, m.Pattern)
+		if len(m.Pkgs) == 0 && strings.Contains(m.Pattern(), "...") {
+			pkgs = append(pkgs, m.Pattern())
 		} else {
 			pkgs = append(pkgs, m.Pkgs...)
 		}
@@ -274,7 +273,7 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int)
 		stk.Push(arg)
 		err := downloadPackage(p)
 		if err != nil {
-			base.Errorf("%s", &load.PackageError{ImportStack: stk.Copy(), Err: err.Error()})
+			base.Errorf("%s", &load.PackageError{ImportStack: stk.Copy(), Err: err})
 			stk.Pop()
 			return
 		}
@@ -285,10 +284,16 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int)
 		// We delay this until after reloadPackage so that the old entry
 		// for p has been replaced in the package cache.
 		if wildcardOkay && strings.Contains(arg, "...") {
-			if build.IsLocalImport(arg) {
-				args = search.MatchPackagesInFS(arg).Pkgs
+			match := search.NewMatch(arg)
+			if match.IsLocal() {
+				match.MatchDirs()
+				args = match.Dirs
 			} else {
-				args = search.MatchPackages(arg).Pkgs
+				match.MatchPackages()
+				args = match.Pkgs
+			}
+			for _, err := range match.Errs {
+				base.Errorf("%s", err)
 			}
 			isWildcard = true
 		}
@@ -355,7 +360,7 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int)
 				stk.Push(path)
 				err := &load.PackageError{
 					ImportStack: stk.Copy(),
-					Err:         "must be imported as " + path[j+len("vendor/"):],
+					Err:         load.ImportErrorf(path, "%s must be imported as %s", path, path[j+len("vendor/"):]),
 				}
 				stk.Pop()
 				base.Errorf("%s", err)

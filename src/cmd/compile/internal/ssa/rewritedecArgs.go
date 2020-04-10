@@ -3,26 +3,14 @@
 
 package ssa
 
-import "fmt"
-import "math"
-import "cmd/internal/obj"
-import "cmd/internal/objabi"
-import "cmd/compile/internal/types"
-
-var _ = fmt.Println   // in case not otherwise used
-var _ = math.MinInt8  // in case not otherwise used
-var _ = obj.ANOP      // in case not otherwise used
-var _ = objabi.GOROOT // in case not otherwise used
-var _ = types.TypeMem // in case not otherwise used
-
 func rewriteValuedecArgs(v *Value) bool {
 	switch v.Op {
 	case OpArg:
-		return rewriteValuedecArgs_OpArg_0(v) || rewriteValuedecArgs_OpArg_10(v)
+		return rewriteValuedecArgs_OpArg(v)
 	}
 	return false
 }
-func rewriteValuedecArgs_OpArg_0(v *Value) bool {
+func rewriteValuedecArgs_OpArg(v *Value) bool {
 	b := v.Block
 	config := b.Func.Config
 	fe := b.Func.fe
@@ -40,11 +28,10 @@ func rewriteValuedecArgs_OpArg_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpArg, typ.BytePtr)
 		v0.AuxInt = off
 		v0.Aux = n
-		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpArg, typ.Int)
 		v1.AuxInt = off + config.PtrSize
 		v1.Aux = n
-		v.AddArg(v1)
+		v.AddArg2(v0, v1)
 		return true
 	}
 	// match: (Arg {n} [off])
@@ -60,15 +47,13 @@ func rewriteValuedecArgs_OpArg_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpArg, v.Type.Elem().PtrTo())
 		v0.AuxInt = off
 		v0.Aux = n
-		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpArg, typ.Int)
 		v1.AuxInt = off + config.PtrSize
 		v1.Aux = n
-		v.AddArg(v1)
 		v2 := b.NewValue0(v.Pos, OpArg, typ.Int)
 		v2.AuxInt = off + 2*config.PtrSize
 		v2.Aux = n
-		v.AddArg(v2)
+		v.AddArg3(v0, v1, v2)
 		return true
 	}
 	// match: (Arg {n} [off])
@@ -84,11 +69,10 @@ func rewriteValuedecArgs_OpArg_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpArg, typ.Uintptr)
 		v0.AuxInt = off
 		v0.Aux = n
-		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpArg, typ.BytePtr)
 		v1.AuxInt = off + config.PtrSize
 		v1.Aux = n
-		v.AddArg(v1)
+		v.AddArg2(v0, v1)
 		return true
 	}
 	// match: (Arg {n} [off])
@@ -104,11 +88,10 @@ func rewriteValuedecArgs_OpArg_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpArg, typ.Float64)
 		v0.AuxInt = off
 		v0.Aux = n
-		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpArg, typ.Float64)
 		v1.AuxInt = off + 8
 		v1.Aux = n
-		v.AddArg(v1)
+		v.AddArg2(v0, v1)
 		return true
 	}
 	// match: (Arg {n} [off])
@@ -124,11 +107,10 @@ func rewriteValuedecArgs_OpArg_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpArg, typ.Float32)
 		v0.AuxInt = off
 		v0.Aux = n
-		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpArg, typ.Float32)
 		v1.AuxInt = off + 4
 		v1.Aux = n
-		v.AddArg(v1)
+		v.AddArg2(v0, v1)
 		return true
 	}
 	// match: (Arg <t>)
@@ -173,11 +155,10 @@ func rewriteValuedecArgs_OpArg_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(0))
 		v0.AuxInt = off + t.FieldOff(0)
 		v0.Aux = n
-		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(1))
 		v1.AuxInt = off + t.FieldOff(1)
 		v1.Aux = n
-		v.AddArg(v1)
+		v.AddArg2(v0, v1)
 		return true
 	}
 	// match: (Arg <t> {n} [off])
@@ -194,15 +175,13 @@ func rewriteValuedecArgs_OpArg_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(0))
 		v0.AuxInt = off + t.FieldOff(0)
 		v0.Aux = n
-		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(1))
 		v1.AuxInt = off + t.FieldOff(1)
 		v1.Aux = n
-		v.AddArg(v1)
 		v2 := b.NewValue0(v.Pos, OpArg, t.FieldType(2))
 		v2.AuxInt = off + t.FieldOff(2)
 		v2.Aux = n
-		v.AddArg(v2)
+		v.AddArg3(v0, v1, v2)
 		return true
 	}
 	// match: (Arg <t> {n} [off])
@@ -219,26 +198,18 @@ func rewriteValuedecArgs_OpArg_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(0))
 		v0.AuxInt = off + t.FieldOff(0)
 		v0.Aux = n
-		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(1))
 		v1.AuxInt = off + t.FieldOff(1)
 		v1.Aux = n
-		v.AddArg(v1)
 		v2 := b.NewValue0(v.Pos, OpArg, t.FieldType(2))
 		v2.AuxInt = off + t.FieldOff(2)
 		v2.Aux = n
-		v.AddArg(v2)
 		v3 := b.NewValue0(v.Pos, OpArg, t.FieldType(3))
 		v3.AuxInt = off + t.FieldOff(3)
 		v3.Aux = n
-		v.AddArg(v3)
+		v.AddArg4(v0, v1, v2, v3)
 		return true
 	}
-	return false
-}
-func rewriteValuedecArgs_OpArg_10(v *Value) bool {
-	b := v.Block
-	fe := b.Func.fe
 	// match: (Arg <t>)
 	// cond: t.IsArray() && t.NumElem() == 0
 	// result: (ArrayMake0)
@@ -270,11 +241,6 @@ func rewriteValuedecArgs_OpArg_10(v *Value) bool {
 	return false
 }
 func rewriteBlockdecArgs(b *Block) bool {
-	config := b.Func.Config
-	typ := &config.Types
-	_ = typ
-	v := b.Control
-	_ = v
 	switch b.Kind {
 	}
 	return false

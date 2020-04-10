@@ -110,11 +110,13 @@ func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value
 		if !reachable[b.ID] {
 			continue
 		}
-		if v := b.Control; v != nil && !live[v.ID] {
-			live[v.ID] = true
-			q = append(q, v)
-			if v.Pos.IsStmt() != src.PosNotStmt {
-				liveOrderStmts = append(liveOrderStmts, v)
+		for _, v := range b.ControlValues() {
+			if !live[v.ID] {
+				live[v.ID] = true
+				q = append(q, v)
+				if v.Pos.IsStmt() != src.PosNotStmt {
+					liveOrderStmts = append(liveOrderStmts, v)
+				}
 			}
 		}
 		for _, v := range b.Values {
@@ -240,8 +242,9 @@ func deadcode(f *Func) {
 			f.NamedValues[name] = values[:j]
 		}
 	}
-	for k := len(f.Names) - 1; k >= i; k-- {
-		f.Names[k] = LocalSlot{}
+	clearNames := f.Names[i:]
+	for j := range clearNames {
+		clearNames[j] = LocalSlot{}
 	}
 	f.Names = f.Names[:i]
 
@@ -252,7 +255,7 @@ func deadcode(f *Func) {
 	for i, b := range f.Blocks {
 		if !reachable[b.ID] {
 			// TODO what if control is statement boundary? Too late here.
-			b.SetControl(nil)
+			b.ResetControls()
 		}
 		for _, v := range b.Values {
 			if !live[v.ID] {
@@ -309,8 +312,9 @@ func deadcode(f *Func) {
 			i++
 		}
 	}
-	for j := i; j < len(f.WBLoads); j++ {
-		f.WBLoads[j] = nil
+	clearWBLoads := f.WBLoads[i:]
+	for j := range clearWBLoads {
+		clearWBLoads[j] = nil
 	}
 	f.WBLoads = f.WBLoads[:i]
 

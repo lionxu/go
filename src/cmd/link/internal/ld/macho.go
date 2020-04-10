@@ -404,61 +404,73 @@ func (ctxt *Link) domacho() {
 		}
 	}
 	if machoPlatform == 0 {
-		machoPlatform = PLATFORM_MACOS
-		if ctxt.LinkMode == LinkInternal {
-			// For lldb, must say LC_VERSION_MIN_MACOSX or else
-			// it won't know that this Mach-O binary is from OS X
-			// (could be iOS or WatchOS instead).
-			// Go on iOS uses linkmode=external, and linkmode=external
-			// adds this itself. So we only need this code for linkmode=internal
-			// and we can assume OS X.
-			//
-			// See golang.org/issues/12941.
-			//
-			// The version must be at least 10.9; see golang.org/issues/30488.
-			ml := newMachoLoad(ctxt.Arch, LC_VERSION_MIN_MACOSX, 2)
-			ml.data[0] = 10<<16 | 9<<8 | 0<<0 // OS X version 10.9.0
-			ml.data[1] = 10<<16 | 9<<8 | 0<<0 // SDK 10.9.0
+		switch ctxt.Arch.Family {
+		default:
+			machoPlatform = PLATFORM_MACOS
+			if ctxt.LinkMode == LinkInternal {
+				// For lldb, must say LC_VERSION_MIN_MACOSX or else
+				// it won't know that this Mach-O binary is from OS X
+				// (could be iOS or WatchOS instead).
+				// Go on iOS uses linkmode=external, and linkmode=external
+				// adds this itself. So we only need this code for linkmode=internal
+				// and we can assume OS X.
+				//
+				// See golang.org/issues/12941.
+				//
+				// The version must be at least 10.9; see golang.org/issues/30488.
+				ml := newMachoLoad(ctxt.Arch, LC_VERSION_MIN_MACOSX, 2)
+				ml.data[0] = 10<<16 | 9<<8 | 0<<0 // OS X version 10.9.0
+				ml.data[1] = 10<<16 | 9<<8 | 0<<0 // SDK 10.9.0
+			}
+		case sys.ARM, sys.ARM64:
+			machoPlatform = PLATFORM_IOS
 		}
 	}
 
 	// empirically, string table must begin with " \x00".
-	s := ctxt.Syms.Lookup(".machosymstr", 0)
+	s := ctxt.loader.LookupOrCreateSym(".machosymstr", 0)
+	sb := ctxt.loader.MakeSymbolUpdater(s)
 
-	s.Type = sym.SMACHOSYMSTR
-	s.Attr |= sym.AttrReachable
-	s.AddUint8(' ')
-	s.AddUint8('\x00')
+	sb.SetType(sym.SMACHOSYMSTR)
+	sb.SetReachable(true)
+	sb.AddUint8(' ')
+	sb.AddUint8('\x00')
 
-	s = ctxt.Syms.Lookup(".machosymtab", 0)
-	s.Type = sym.SMACHOSYMTAB
-	s.Attr |= sym.AttrReachable
+	s = ctxt.loader.LookupOrCreateSym(".machosymtab", 0)
+	sb = ctxt.loader.MakeSymbolUpdater(s)
+	sb.SetType(sym.SMACHOSYMTAB)
+	sb.SetReachable(true)
 
-	if ctxt.LinkMode != LinkExternal {
-		s := ctxt.Syms.Lookup(".plt", 0) // will be __symbol_stub
-		s.Type = sym.SMACHOPLT
-		s.Attr |= sym.AttrReachable
+	if ctxt.IsInternal() {
+		s = ctxt.loader.LookupOrCreateSym(".plt", 0) // will be __symbol_stub
+		sb = ctxt.loader.MakeSymbolUpdater(s)
+		sb.SetType(sym.SMACHOPLT)
+		sb.SetReachable(true)
 
-		s = ctxt.Syms.Lookup(".got", 0) // will be __nl_symbol_ptr
-		s.Type = sym.SMACHOGOT
-		s.Attr |= sym.AttrReachable
-		s.Align = 4
+		s = ctxt.loader.LookupOrCreateSym(".got", 0) // will be __nl_symbol_ptr
+		sb = ctxt.loader.MakeSymbolUpdater(s)
+		sb.SetType(sym.SMACHOGOT)
+		sb.SetReachable(true)
+		sb.SetAlign(4)
 
-		s = ctxt.Syms.Lookup(".linkedit.plt", 0) // indirect table for .plt
-		s.Type = sym.SMACHOINDIRECTPLT
-		s.Attr |= sym.AttrReachable
+		s = ctxt.loader.LookupOrCreateSym(".linkedit.plt", 0) // indirect table for .plt
+		sb = ctxt.loader.MakeSymbolUpdater(s)
+		sb.SetType(sym.SMACHOINDIRECTPLT)
+		sb.SetReachable(true)
 
-		s = ctxt.Syms.Lookup(".linkedit.got", 0) // indirect table for .got
-		s.Type = sym.SMACHOINDIRECTGOT
-		s.Attr |= sym.AttrReachable
+		s = ctxt.loader.LookupOrCreateSym(".linkedit.got", 0) // indirect table for .got
+		sb = ctxt.loader.MakeSymbolUpdater(s)
+		sb.SetType(sym.SMACHOINDIRECTGOT)
+		sb.SetReachable(true)
 	}
 
 	// Add a dummy symbol that will become the __asm marker section.
-	if ctxt.LinkMode == LinkExternal {
-		s := ctxt.Syms.Lookup(".llvmasm", 0)
-		s.Type = sym.SMACHO
-		s.Attr |= sym.AttrReachable
-		s.AddUint8(0)
+	if ctxt.IsExternal() {
+		s = ctxt.loader.LookupOrCreateSym(".llvmasm", 0)
+		sb = ctxt.loader.MakeSymbolUpdater(s)
+		sb.SetType(sym.SMACHO)
+		sb.SetReachable(true)
+		sb.AddUint8(0)
 	}
 }
 
@@ -488,9 +500,9 @@ func machoshbits(ctxt *Link, mseg *MachoSeg, sect *sym.Section, segname string) 
 
 	var msect *MachoSect
 	if sect.Rwx&1 == 0 && segname != "__DWARF" && (ctxt.Arch.Family == sys.ARM64 ||
-		(ctxt.Arch.Family == sys.AMD64 && ctxt.BuildMode != BuildModeExe) ||
-		(ctxt.Arch.Family == sys.ARM && ctxt.BuildMode != BuildModeExe)) {
-		// Darwin external linker on arm64 and on amd64 and arm in c-shared/c-archive buildmode
+		ctxt.Arch.Family == sys.ARM ||
+		(ctxt.Arch.Family == sys.AMD64 && ctxt.BuildMode != BuildModeExe)) {
+		// Darwin external linker on arm and arm64, and on amd64 in c-shared/c-archive buildmode
 		// complains about absolute relocs in __TEXT, so if the section is not
 		// executable, put it in __DATA segment.
 		msect = newMachoSect(mseg, buf, "__DATA")
@@ -809,7 +821,7 @@ func machogenasmsym(ctxt *Link) {
 			}
 		}
 
-		if s.Type == sym.SDYNIMPORT || s.Type == sym.SHOSTOBJ {
+		if s.Type == sym.SDYNIMPORT || s.Type == sym.SHOSTOBJ || s.Type == sym.SUNDEFEXT {
 			if s.Attr.Reachable() {
 				addsym(ctxt, s, "", DataSym, 0, nil)
 			}
@@ -869,6 +881,7 @@ func machosymtab(ctxt *Link) {
 		symtab.AddUint32(ctxt.Arch, uint32(symstr.Size))
 
 		export := machoShouldExport(ctxt, s)
+		isGoSymbol := strings.Contains(s.Extname(), ".")
 
 		// In normal buildmodes, only add _ to C symbols, as
 		// Go symbols have dot in the name.
@@ -877,15 +890,15 @@ func machosymtab(ctxt *Link) {
 		// symbols like crosscall2 are in pclntab and end up
 		// pointing at the host binary, breaking unwinding.
 		// See Issue #18190.
-		cexport := !strings.Contains(s.Extname(), ".") && (ctxt.BuildMode != BuildModePlugin || onlycsymbol(s))
-		if cexport || export {
+		cexport := !isGoSymbol && (ctxt.BuildMode != BuildModePlugin || onlycsymbol(s))
+		if cexport || export || isGoSymbol {
 			symstr.AddUint8('_')
 		}
 
 		// replace "·" as ".", because DTrace cannot handle it.
 		Addstring(symstr, strings.Replace(s.Extname(), "·", ".", -1))
 
-		if s.Type == sym.SDYNIMPORT || s.Type == sym.SHOSTOBJ {
+		if s.Type == sym.SDYNIMPORT || s.Type == sym.SHOSTOBJ || s.Type == sym.SUNDEFEXT {
 			symtab.AddUint8(0x01)                             // type N_EXT, external symbol
 			symtab.AddUint8(0)                                // no section
 			symtab.AddUint16(ctxt.Arch, 0)                    // desc
@@ -1047,10 +1060,10 @@ func Machoemitreloc(ctxt *Link) {
 
 	machorelocsect(ctxt, Segtext.Sections[0], ctxt.Textp)
 	for _, sect := range Segtext.Sections[1:] {
-		machorelocsect(ctxt, sect, datap)
+		machorelocsect(ctxt, sect, ctxt.datap)
 	}
 	for _, sect := range Segdata.Sections {
-		machorelocsect(ctxt, sect, datap)
+		machorelocsect(ctxt, sect, ctxt.datap)
 	}
 	for _, sect := range Segdwarf.Sections {
 		machorelocsect(ctxt, sect, dwarfp)

@@ -20,6 +20,9 @@
 // 		log.Println(http.ListenAndServe("localhost:6060", nil))
 // 	}()
 //
+// If you are not using DefaultServeMux, you will have to register handlers
+// with the mux you are using.
+//
 // Then use the pprof tool to look at the heap profile:
 //
 //	go tool pprof http://localhost:6060/debug/pprof/heap
@@ -269,6 +272,9 @@ func Index(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	type profile struct {
 		Name  string

@@ -787,6 +787,7 @@ type Loopy interface{}
 
 var loop1, loop2 Loop
 var loopy1, loopy2 Loopy
+var cycleMap1, cycleMap2, cycleMap3 map[string]interface{}
 
 func init() {
 	loop1 = &loop2
@@ -794,6 +795,13 @@ func init() {
 
 	loopy1 = &loopy2
 	loopy2 = &loopy1
+
+	cycleMap1 = map[string]interface{}{}
+	cycleMap1["cycle"] = cycleMap1
+	cycleMap2 = map[string]interface{}{}
+	cycleMap2["cycle"] = cycleMap2
+	cycleMap3 = map[string]interface{}{}
+	cycleMap3["different"] = cycleMap3
 }
 
 var deepEqualTests = []DeepEqualTest{
@@ -860,6 +868,8 @@ var deepEqualTests = []DeepEqualTest{
 	{&loop1, &loop2, true},
 	{&loopy1, &loopy1, true},
 	{&loopy1, &loopy2, true},
+	{&cycleMap1, &cycleMap2, true},
+	{&cycleMap1, &cycleMap3, false},
 }
 
 func TestDeepEqual(t *testing.T) {
@@ -868,7 +878,7 @@ func TestDeepEqual(t *testing.T) {
 			test.b = test.a
 		}
 		if r := DeepEqual(test.a, test.b); r != test.eq {
-			t.Errorf("DeepEqual(%v, %v) = %v, want %v", test.a, test.b, r, test.eq)
+			t.Errorf("DeepEqual(%#v, %#v) = %v, want %v", test.a, test.b, r, test.eq)
 		}
 	}
 }
@@ -1639,6 +1649,35 @@ func TestSelect(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestSelectMaxCases(t *testing.T) {
+	var sCases []SelectCase
+	channel := make(chan int)
+	close(channel)
+	for i := 0; i < 65536; i++ {
+		sCases = append(sCases, SelectCase{
+			Dir:  SelectRecv,
+			Chan: ValueOf(channel),
+		})
+	}
+	// Should not panic
+	_, _, _ = Select(sCases)
+	sCases = append(sCases, SelectCase{
+		Dir:  SelectRecv,
+		Chan: ValueOf(channel),
+	})
+	defer func() {
+		if err := recover(); err != nil {
+			if err.(string) != "reflect.Select: too many cases (max 65536)" {
+				t.Fatalf("unexpected error from select call with greater than max supported cases")
+			}
+		} else {
+			t.Fatalf("expected select call to panic with greater than max supported cases")
+		}
+	}()
+	// Should panic
+	_, _, _ = Select(sCases)
 }
 
 // selectWatch and the selectWatcher are a watchdog mechanism for running Select.
@@ -3624,6 +3663,13 @@ type MyRunes []int32
 type MyFunc func()
 type MyByte byte
 
+type IntChan chan int
+type IntChanRecv <-chan int
+type IntChanSend chan<- int
+type BytesChan chan []byte
+type BytesChanRecv <-chan []byte
+type BytesChanSend chan<- []byte
+
 var convertTests = []struct {
 	in  Value
 	out Value
@@ -3985,10 +4031,6 @@ var convertTests = []struct {
 	{V((***byte)(nil)), V((***byte)(nil))},
 	{V((***int32)(nil)), V((***int32)(nil))},
 	{V((***int64)(nil)), V((***int64)(nil))},
-	{V((chan int)(nil)), V((<-chan int)(nil))},
-	{V((chan int)(nil)), V((chan<- int)(nil))},
-	{V((chan string)(nil)), V((<-chan string)(nil))},
-	{V((chan string)(nil)), V((chan<- string)(nil))},
 	{V((chan byte)(nil)), V((chan byte)(nil))},
 	{V((chan MyByte)(nil)), V((chan MyByte)(nil))},
 	{V((map[int]bool)(nil)), V((map[int]bool)(nil))},
@@ -3999,6 +4041,40 @@ var convertTests = []struct {
 	{V(new(interface{})), V(new(interface{}))},
 	{V(new(io.Reader)), V(new(io.Reader))},
 	{V(new(io.Writer)), V(new(io.Writer))},
+
+	// channels
+	{V(IntChan(nil)), V((chan<- int)(nil))},
+	{V(IntChan(nil)), V((<-chan int)(nil))},
+	{V((chan int)(nil)), V(IntChanRecv(nil))},
+	{V((chan int)(nil)), V(IntChanSend(nil))},
+	{V(IntChanRecv(nil)), V((<-chan int)(nil))},
+	{V((<-chan int)(nil)), V(IntChanRecv(nil))},
+	{V(IntChanSend(nil)), V((chan<- int)(nil))},
+	{V((chan<- int)(nil)), V(IntChanSend(nil))},
+	{V(IntChan(nil)), V((chan int)(nil))},
+	{V((chan int)(nil)), V(IntChan(nil))},
+	{V((chan int)(nil)), V((<-chan int)(nil))},
+	{V((chan int)(nil)), V((chan<- int)(nil))},
+	{V(BytesChan(nil)), V((chan<- []byte)(nil))},
+	{V(BytesChan(nil)), V((<-chan []byte)(nil))},
+	{V((chan []byte)(nil)), V(BytesChanRecv(nil))},
+	{V((chan []byte)(nil)), V(BytesChanSend(nil))},
+	{V(BytesChanRecv(nil)), V((<-chan []byte)(nil))},
+	{V((<-chan []byte)(nil)), V(BytesChanRecv(nil))},
+	{V(BytesChanSend(nil)), V((chan<- []byte)(nil))},
+	{V((chan<- []byte)(nil)), V(BytesChanSend(nil))},
+	{V(BytesChan(nil)), V((chan []byte)(nil))},
+	{V((chan []byte)(nil)), V(BytesChan(nil))},
+	{V((chan []byte)(nil)), V((<-chan []byte)(nil))},
+	{V((chan []byte)(nil)), V((chan<- []byte)(nil))},
+
+	// cannot convert other instances (channels)
+	{V(IntChan(nil)), V(IntChan(nil))},
+	{V(IntChanRecv(nil)), V(IntChanRecv(nil))},
+	{V(IntChanSend(nil)), V(IntChanSend(nil))},
+	{V(BytesChan(nil)), V(BytesChan(nil))},
+	{V(BytesChanRecv(nil)), V(BytesChanRecv(nil))},
+	{V(BytesChanSend(nil)), V(BytesChanSend(nil))},
 
 	// interfaces
 	{V(int(1)), EmptyInterfaceV(int(1))},
@@ -4084,6 +4160,37 @@ func TestConvert(t *testing.T) {
 				t.Errorf("(%s).ConvertibleTo(%s) = %v, want %v", t1, t2, ok, expectOK)
 			}
 		}
+	}
+}
+
+var gFloat32 float32
+
+func TestConvertNaNs(t *testing.T) {
+	const snan uint32 = 0x7f800001
+
+	// Test to see if a store followed by a load of a signaling NaN
+	// maintains the signaling bit. The only platform known to fail
+	// this test is 386,GO386=387. The real test below will always fail
+	// if the platform can't even store+load a float without mucking
+	// with the bits.
+	gFloat32 = math.Float32frombits(snan)
+	runtime.Gosched() // make sure we don't optimize the store/load away
+	r := math.Float32bits(gFloat32)
+	if r != snan {
+		// This should only happen on 386,GO386=387. We have no way to
+		// test for 387, so we just make sure we're at least on 386.
+		if runtime.GOARCH != "386" {
+			t.Errorf("store/load of sNaN not faithful")
+		}
+		t.Skip("skipping test, float store+load not faithful")
+	}
+
+	type myFloat32 float32
+	x := V(myFloat32(math.Float32frombits(snan)))
+	y := x.Convert(TypeOf(float32(0)))
+	z := y.Interface().(float32)
+	if got := math.Float32bits(z); got != snan {
+		t.Errorf("signaling nan conversion got %x, want %x", got, snan)
 	}
 }
 
@@ -4723,17 +4830,14 @@ func TestStructOfExportRules(t *testing.T) {
 			mustPanic: true,
 		},
 		{
-			field:     StructField{Name: "s2", Type: TypeOf(int(0)), PkgPath: "other/pkg"},
-			mustPanic: true,
+			field: StructField{Name: "s2", Type: TypeOf(int(0)), PkgPath: "other/pkg"},
 		},
 		{
-			field:     StructField{Name: "s2", Type: TypeOf(int(0)), PkgPath: "other/pkg"},
-			mustPanic: true,
+			field: StructField{Name: "s2", Type: TypeOf(int(0)), PkgPath: "other/pkg"},
 		},
 		{
-			field:     StructField{Name: "S", Type: TypeOf(S1{})},
-			mustPanic: false,
-			exported:  true,
+			field:    StructField{Name: "S", Type: TypeOf(S1{})},
+			exported: true,
 		},
 		{
 			field:    StructField{Name: "S", Type: TypeOf((*S1)(nil))},
@@ -4764,20 +4868,16 @@ func TestStructOfExportRules(t *testing.T) {
 			mustPanic: true,
 		},
 		{
-			field:     StructField{Name: "s", Type: TypeOf(S1{}), PkgPath: "other/pkg"},
-			mustPanic: true, // TODO(sbinet): creating a name with a package path
+			field: StructField{Name: "s", Type: TypeOf(S1{}), PkgPath: "other/pkg"},
 		},
 		{
-			field:     StructField{Name: "s", Type: TypeOf((*S1)(nil)), PkgPath: "other/pkg"},
-			mustPanic: true, // TODO(sbinet): creating a name with a package path
+			field: StructField{Name: "s", Type: TypeOf((*S1)(nil)), PkgPath: "other/pkg"},
 		},
 		{
-			field:     StructField{Name: "s", Type: TypeOf(s2{}), PkgPath: "other/pkg"},
-			mustPanic: true, // TODO(sbinet): creating a name with a package path
+			field: StructField{Name: "s", Type: TypeOf(s2{}), PkgPath: "other/pkg"},
 		},
 		{
-			field:     StructField{Name: "s", Type: TypeOf((*s2)(nil)), PkgPath: "other/pkg"},
-			mustPanic: true, // TODO(sbinet): creating a name with a package path
+			field: StructField{Name: "s", Type: TypeOf((*s2)(nil)), PkgPath: "other/pkg"},
 		},
 		{
 			field:     StructField{Name: "", Type: TypeOf(ΦType{})},
@@ -4812,6 +4912,9 @@ func TestStructOfExportRules(t *testing.T) {
 			exported := token.IsExported(n)
 			if exported != test.exported {
 				t.Errorf("test-%d: got exported=%v want exported=%v", i, exported, test.exported)
+			}
+			if field.PkgPath != test.field.PkgPath {
+				t.Errorf("test-%d: got PkgPath=%q want pkgPath=%q", i, field.PkgPath, test.field.PkgPath)
 			}
 		})
 	}
@@ -5266,6 +5369,24 @@ func TestStructOfTooManyFields(t *testing.T) {
 	if _, present := tt.MethodByName("After"); !present {
 		t.Errorf("Expected method `After` to be found")
 	}
+}
+
+func TestStructOfDifferentPkgPath(t *testing.T) {
+	fields := []StructField{
+		{
+			Name:    "f1",
+			PkgPath: "p1",
+			Type:    TypeOf(int(0)),
+		},
+		{
+			Name:    "f2",
+			PkgPath: "p2",
+			Type:    TypeOf(int(0)),
+		},
+	}
+	shouldPanic(func() {
+		StructOf(fields)
+	})
 }
 
 func TestChanOf(t *testing.T) {
@@ -6101,9 +6222,6 @@ var funcLayoutTests []funcLayoutTest
 
 func init() {
 	var argAlign uintptr = PtrSize
-	if runtime.GOARCH == "amd64p32" {
-		argAlign = 2 * PtrSize
-	}
 	roundup := func(x uintptr, a uintptr) uintptr {
 		return (x + a - 1) / a * a
 	}
@@ -6413,7 +6531,7 @@ func TestGCBits(t *testing.T) {
 		join(hdr, rep(8, lit(0, 1)), rep(8, lit(1)), lit(1)))
 	verifyMapBucket(t, Tint64, Tptr,
 		map[int64]Xptr(nil),
-		join(hdr, rep(8, rep(8/PtrSize, lit(0))), rep(8, lit(1)), naclpad(), lit(1)))
+		join(hdr, rep(8, rep(8/PtrSize, lit(0))), rep(8, lit(1)), lit(1)))
 	verifyMapBucket(t,
 		Tscalar, Tscalar,
 		map[Xscalar]Xscalar(nil),
@@ -6438,13 +6556,6 @@ func TestGCBits(t *testing.T) {
 		ArrayOf(64/PtrSize+1, Tscalarptr), ArrayOf(64/PtrSize+1, Tptrscalar),
 		map[[64/PtrSize + 1]Xscalarptr][64/PtrSize + 1]Xptrscalar(nil),
 		join(hdr, rep(8, lit(1)), rep(8, lit(1)), lit(1)))
-}
-
-func naclpad() []byte {
-	if runtime.GOARCH == "amd64p32" {
-		return lit(0)
-	}
-	return nil
 }
 
 func rep(n int, b []byte) []byte { return bytes.Repeat(b, n) }

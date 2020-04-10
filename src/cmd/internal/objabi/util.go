@@ -127,7 +127,7 @@ func init() {
 }
 
 func Framepointer_enabled(goos, goarch string) bool {
-	return framepointer_enabled != 0 && (goarch == "amd64" && goos != "nacl" || goarch == "arm64" && goos == "linux")
+	return framepointer_enabled != 0 && (goarch == "amd64" || goarch == "arm64" && goos == "linux")
 }
 
 func addexp(s string) {
@@ -152,9 +152,10 @@ func addexp(s string) {
 }
 
 var (
-	framepointer_enabled     int = 1
-	Fieldtrack_enabled       int
-	Preemptibleloops_enabled int
+	framepointer_enabled      int = 1
+	Fieldtrack_enabled        int
+	Preemptibleloops_enabled  int
+	Staticlockranking_enabled int
 )
 
 // Toolchain experiments.
@@ -168,6 +169,7 @@ var exper = []struct {
 	{"fieldtrack", &Fieldtrack_enabled},
 	{"framepointer", &framepointer_enabled},
 	{"preemptibleloops", &Preemptibleloops_enabled},
+	{"staticlockranking", &Staticlockranking_enabled},
 }
 
 var defaultExpstring = Expstring()

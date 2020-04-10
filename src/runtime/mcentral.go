@@ -34,6 +34,7 @@ func (c *mcentral) init(spc spanClass) {
 	c.spanclass = spc
 	c.nonempty.init()
 	c.empty.init()
+	lockInit(&c.lock, lockRankMcentral)
 }
 
 // Allocate a span to use in an mcache.
@@ -243,7 +244,7 @@ func (c *mcentral) freeSpan(s *mspan, preserve bool, wasempty bool) bool {
 
 	c.nonempty.remove(s)
 	unlock(&c.lock)
-	mheap_.freeSpan(s, false)
+	mheap_.freeSpan(s)
 	return true
 }
 
@@ -252,7 +253,7 @@ func (c *mcentral) grow() *mspan {
 	npages := uintptr(class_to_allocnpages[c.spanclass.sizeclass()])
 	size := uintptr(class_to_size[c.spanclass.sizeclass()])
 
-	s := mheap_.alloc(npages, c.spanclass, false, true)
+	s := mheap_.alloc(npages, c.spanclass, true)
 	if s == nil {
 		return nil
 	}

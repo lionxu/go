@@ -28,7 +28,7 @@
 //            if err != nil {
 //                log.Fatal("could not create CPU profile: ", err)
 //            }
-//            defer f.Close()
+//            defer f.Close() // error handling omitted for example
 //            if err := pprof.StartCPUProfile(f); err != nil {
 //                log.Fatal("could not start CPU profile: ", err)
 //            }
@@ -42,7 +42,7 @@
 //            if err != nil {
 //                log.Fatal("could not create memory profile: ", err)
 //            }
-//            defer f.Close()
+//            defer f.Close() // error handling omitted for example
 //            runtime.GC() // get up-to-date statistics
 //            if err := pprof.WriteHeapProfile(f); err != nil {
 //                log.Fatal("could not write memory profile: ", err)
@@ -313,9 +313,11 @@ func (p *Profile) Remove(value interface{}) {
 // Otherwise, WriteTo returns nil.
 //
 // The debug parameter enables additional output.
-// Passing debug=0 prints only the hexadecimal addresses that pprof needs.
-// Passing debug=1 adds comments translating addresses to function names
-// and line numbers, so that a programmer can read the profile without tools.
+// Passing debug=0 writes the gzip-compressed protocol buffer described
+// in https://github.com/google/pprof/tree/master/proto#overview.
+// Passing debug=1 writes the legacy text format with comments
+// translating addresses to function names and line numbers, so that a
+// programmer can read the profile without tools.
 //
 // The predefined profiles may assign meaning to other debug values;
 // for example, when printing the "goroutine" profile, debug=2 means to
@@ -386,16 +388,9 @@ func printCountCycleProfile(w io.Writer, countName, cycleName string, scaler fun
 		count, nanosec := scaler(r.Count, float64(r.Cycles)/cpuGHz)
 		values[0] = count
 		values[1] = int64(nanosec)
-		locs = locs[:0]
-		for _, addr := range r.Stack() {
-			// For count profiles, all stack addresses are
-			// return PCs, which is what locForPC expects.
-			l := b.locForPC(addr)
-			if l == 0 { // runtime.goexit
-				continue
-			}
-			locs = append(locs, l)
-		}
+		// For count profiles, all stack addresses are
+		// return PCs, which is what appendLocsForStack expects.
+		locs = b.appendLocsForStack(locs[:0], r.Stack())
 		b.pbSample(values, locs, nil)
 	}
 	b.build()
@@ -451,16 +446,9 @@ func printCountProfile(w io.Writer, debug int, name string, p countProfile) erro
 	var locs []uint64
 	for _, k := range keys {
 		values[0] = int64(count[k])
-		locs = locs[:0]
-		for _, addr := range p.Stack(index[k]) {
-			// For count profiles, all stack addresses are
-			// return PCs, which is what locForPC expects.
-			l := b.locForPC(addr)
-			if l == 0 { // runtime.goexit
-				continue
-			}
-			locs = append(locs, l)
-		}
+		// For count profiles, all stack addresses are
+		// return PCs, which is what appendLocsForStack expects.
+		locs = b.appendLocsForStack(locs[:0], p.Stack(index[k]))
 		b.pbSample(values, locs, nil)
 	}
 	b.build()
@@ -641,6 +629,9 @@ func writeHeapInternal(w io.Writer, debug int, defaultSampleType string) error {
 	fmt.Fprintf(w, "# NumForcedGC = %d\n", s.NumForcedGC)
 	fmt.Fprintf(w, "# GCCPUFraction = %v\n", s.GCCPUFraction)
 	fmt.Fprintf(w, "# DebugGC = %v\n", s.DebugGC)
+
+	// Also flush out MaxRSS on supported platforms.
+	addMaxRSS(w)
 
 	tw.Flush()
 	return b.Flush()

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"reflect"
 	"sort"
 	"strconv"
@@ -19,8 +18,6 @@ import (
 	"testing"
 	"time"
 )
-
-var _ = log.Printf
 
 // fakeDriver is a fake database that implements Go's driver.Driver
 // interface, just for testing.
@@ -397,6 +394,12 @@ func (c *fakeConn) ResetSession(ctx context.Context) error {
 		return driver.ErrBadConn
 	}
 	return nil
+}
+
+var _ driver.Validator = (*fakeConn)(nil)
+
+func (c *fakeConn) IsValid() bool {
+	return !c.isBad()
 }
 
 func (c *fakeConn) Close() (err error) {

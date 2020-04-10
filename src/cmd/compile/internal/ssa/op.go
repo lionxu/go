@@ -36,6 +36,7 @@ type opInfo struct {
 	usesScratch       bool      // this op requires scratch memory space
 	hasSideEffects    bool      // for "reasons", not to be eliminated.  E.g., atomic store, #19182.
 	zeroWidth         bool      // op never translates into any machine code. example: copy, which may sometimes translate to machine code, is not zero-width.
+	unsafePoint       bool      // this op is an unsafe point, i.e. not safe for async preemption
 	symEffect         SymEffect // effect this op has on symbol in aux
 	scale             uint8     // amd64/386 indexed load scale
 }
@@ -67,24 +68,24 @@ type regInfo struct {
 type auxType int8
 
 const (
-	auxNone         auxType = iota
-	auxBool                 // auxInt is 0/1 for false/true
-	auxInt8                 // auxInt is an 8-bit integer
-	auxInt16                // auxInt is a 16-bit integer
-	auxInt32                // auxInt is a 32-bit integer
-	auxInt64                // auxInt is a 64-bit integer
-	auxInt128               // auxInt represents a 128-bit integer.  Always 0.
-	auxFloat32              // auxInt is a float32 (encoded with math.Float64bits)
-	auxFloat64              // auxInt is a float64 (encoded with math.Float64bits)
-	auxString               // aux is a string
-	auxSym                  // aux is a symbol (a *gc.Node for locals or an *obj.LSym for globals)
-	auxSymOff               // aux is a symbol, auxInt is an offset
-	auxSymValAndOff         // aux is a symbol, auxInt is a ValAndOff
-	auxTyp                  // aux is a type
-	auxTypSize              // aux is a type, auxInt is a size, must have Aux.(Type).Size() == AuxInt
-	auxCCop                 // aux is a ssa.Op that represents a flags-to-bool conversion (e.g. LessThan)
-
-	auxSymInt32 // aux is a symbol, auxInt is a 32-bit integer
+	auxNone          auxType = iota
+	auxBool                  // auxInt is 0/1 for false/true
+	auxInt8                  // auxInt is an 8-bit integer
+	auxInt16                 // auxInt is a 16-bit integer
+	auxInt32                 // auxInt is a 32-bit integer
+	auxInt64                 // auxInt is a 64-bit integer
+	auxInt128                // auxInt represents a 128-bit integer.  Always 0.
+	auxFloat32               // auxInt is a float32 (encoded with math.Float64bits)
+	auxFloat64               // auxInt is a float64 (encoded with math.Float64bits)
+	auxString                // aux is a string
+	auxSym                   // aux is a symbol (a *gc.Node for locals, an *obj.LSym for globals, or nil for none)
+	auxSymOff                // aux is a symbol, auxInt is an offset
+	auxSymValAndOff          // aux is a symbol, auxInt is a ValAndOff
+	auxTyp                   // aux is a type
+	auxTypSize               // aux is a type, auxInt is a size, must have Aux.(Type).Size() == AuxInt
+	auxCCop                  // aux is a ssa.Op that represents a flags-to-bool conversion (e.g. LessThan)
+	auxARM64BitField         // aux is an arm64 bitfield lsb and width packed into auxint
+	auxArchSpecific          // aux type is specific to a particular backend (see the relevant op for the actual type)
 )
 
 // A SymEffect describes the effect that an SSA Value has on the variable
@@ -100,6 +101,16 @@ const (
 
 	SymNone SymEffect = 0
 )
+
+// A Sym represents a symbolic offset from a base register.
+// Currently a Sym can be one of 3 things:
+//  - a *gc.Node, for an offset from SP (the stack pointer)
+//  - a *obj.LSym, for an offset from SB (the global pointer)
+//  - nil, for no offset
+type Sym interface {
+	String() string
+	CanBeAnSSASym()
+}
 
 // A ValAndOff is used by the several opcodes. It holds
 // both a value and a pointer offset.
@@ -152,6 +163,9 @@ func makeValAndOff(val, off int64) int64 {
 		panic("invalid makeValAndOff")
 	}
 	return ValAndOff(val<<32 + int64(uint32(off))).Int64()
+}
+func makeValAndOff32(val, off int32) ValAndOff {
+	return ValAndOff(int64(val)<<32 + int64(uint32(off)))
 }
 
 // offOnly returns the offset half of ValAndOff vo.

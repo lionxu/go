@@ -91,7 +91,7 @@ func main() {
 	}
 
 	if args[0] == "get" || args[0] == "help" {
-		if modload.Init(); !modload.Enabled() {
+		if !modload.WillBeEnabled() {
 			// Replace module-aware get with GOPATH get if appropriate.
 			*modget.CmdGet = *get.CmdGet
 		}
@@ -182,7 +182,7 @@ BigCmdLoop:
 			if cmd.CustomFlags {
 				args = args[1:]
 			} else {
-				base.SetFromGOFLAGS(cmd.Flag)
+				base.SetFromGOFLAGS(&cmd.Flag)
 				cmd.Flag.Parse(args[1:])
 				args = cmd.Flag.Args()
 			}
